@@ -94,6 +94,13 @@ public:
     return Connection(std::bind(&Signal::removeCallback, &signal_, helper));
   }
 
+  template<typename P>
+  Connection registerCallback(void(*callback)(P, int))
+  {
+    typename CallbackHelper1<M>::Ptr helper = signal_.template addFCallback<P,int>(std::bind(callback, std::placeholders::_1, std::placeholders::_2));
+    return Connection(std::bind(&Signal::removeCallback, &signal_, helper));
+  }
+
   /**
    * \brief Register a callback to be called when this filter has passed
    * \param callback The callback to call
@@ -102,6 +109,13 @@ public:
   Connection registerCallback(void(T::*callback)(P), T* t)
   {
     typename CallbackHelper1<M>::Ptr helper = signal_.template addCallback<P>(std::bind(callback, t, std::placeholders::_1));
+    return Connection(std::bind(&Signal::removeCallback, &signal_, helper));
+  }
+
+  template<typename T, typename P>
+  Connection registerCallback(void(T::*callback)(P, int), T* t)
+  {
+    typename CallbackHelper1<M>::Ptr helper = signal_.template addFCallback<P,int>(std::bind(callback, t, std::placeholders::_1, std::placeholders::_2));
     return Connection(std::bind(&Signal::removeCallback, &signal_, helper));
   }
 
@@ -131,6 +145,24 @@ protected:
   void signalMessage(const MessageEvent<M const>& event)
   {
     signal_.call(event);
+  }
+
+  /**
+   * \brief Call all registered callbacks, passing them the specified message
+   */
+  void signalMessage(const MConstPtr& msg, int data)
+  {
+    MessageEvent<M const> event(msg);
+
+    signal_.call(event, data);
+  }
+
+  /**
+   * \brief Call all registered callbacks, passing them the specified message
+   */
+  void signalMessage(const MessageEvent<M const>& event, int data)
+  {
+    signal_.call(event, data);
   }
 
 private:

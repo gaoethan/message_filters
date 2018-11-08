@@ -51,6 +51,7 @@ public:
   virtual ~CallbackHelper1() {}
 
   virtual void call(const MessageEvent<M const>& event, bool nonconst_need_copy) = 0;
+  virtual void call(const MessageEvent<M const>& event, int data, bool nonconst_need_copy) = 0;
 
   typedef std::shared_ptr<CallbackHelper1<M> > Ptr;
 };
@@ -61,10 +62,16 @@ class CallbackHelper1T : public CallbackHelper1<M>
 public:
   typedef ParameterAdapter<P> Adapter;
   typedef std::function<void(typename Adapter::Parameter)> Callback;
+  typedef std::function<void(typename Adapter::Parameter, int)> fCallback;
   typedef typename Adapter::Event Event;
 
   CallbackHelper1T(const Callback& cb)
   : callback_(cb)
+  {
+  }
+
+  CallbackHelper1T(const fCallback& cb)
+  : fcallback_(cb)
   {
   }
 
@@ -74,8 +81,15 @@ public:
     callback_(Adapter::getParameter(my_event));
   }
 
+  virtual void call(const MessageEvent<M const>& event, int data, bool nonconst_force_copy)
+  {
+    Event my_event(event, nonconst_force_copy || event.nonConstWillCopy());
+    fcallback_(Adapter::getParameter(my_event), data);
+  }
+
 private:
   Callback callback_;
+  fCallback fcallback_;
 };
 
 template<class M>
@@ -89,6 +103,16 @@ public:
   CallbackHelper1Ptr addCallback(const std::function<void(P)>& callback)
   {
     CallbackHelper1T<P, M>* helper = new CallbackHelper1T<P, M>(callback);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    callbacks_.push_back(CallbackHelper1Ptr(helper));
+    return callbacks_.back();
+  }
+
+  template<typename P>
+  CallbackHelper1Ptr addFCallback(const std::function<void(P, int)>& fcallback)
+  {
+    CallbackHelper1T<P, M>* helper = new CallbackHelper1T<P, M>(fcallback);
 
     std::lock_guard<std::mutex> lock(mutex_);
     callbacks_.push_back(CallbackHelper1Ptr(helper));
@@ -115,6 +139,19 @@ public:
     {
       const CallbackHelper1Ptr& helper = *it;
       helper->call(event, nonconst_force_copy);
+    }
+  }
+
+  void call(const MessageEvent<M const>& event, int data)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bool nonconst_force_copy = callbacks_.size() > 1;
+    typename V_CallbackHelper1::iterator it = callbacks_.begin();
+    typename V_CallbackHelper1::iterator end = callbacks_.end();
+    for (; it != end; ++it)
+    {
+      const CallbackHelper1Ptr& helper = *it;
+      helper->call(event, data, nonconst_force_copy);
     }
   }
 
